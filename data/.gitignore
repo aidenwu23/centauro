@@ -1,0 +1,15 @@
+# Keep folder structure, ignore generated data payloads.
+events/raw/*
+!events/raw/.gitkeep
+
+events/filtered/*
+!events/filtered/.gitkeep
+
+jets/raw/*
+!jets/raw/.gitkeep
+
+jets/matched/*
+!jets/matched/.gitkeep
+
+graphs/*
+!graphs/.gitkeep

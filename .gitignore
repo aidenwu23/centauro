@@ -1,0 +1,21 @@
+# Build / output
+build/
+dist/
+*.o
+*.out
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# C++ project example
+cmake-build*/
+CMakeFiles/
+CMakeCache.txt
+
+# Editor junk
+.vscode/
+.idea/
+*.swp
