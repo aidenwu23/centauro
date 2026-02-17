@@ -37,6 +37,7 @@ Run:
 #include <edm4hep/MCParticleCollection.h>
 
 #include "jet_tools/include/beam_helpers.h"
+#include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/electron_veto.h"
 #include "jet_tools/include/math_helpers.h"
 #include "jet_tools/include/root_io.h"
@@ -169,8 +170,7 @@ bool build_transform(const podio::Frame &frame, bool use_reco,
 
   jet_tools::BreitXSource x_source = jet_tools::BreitXSource::Derived;
   double x_input = std::numeric_limits<double>::quiet_NaN();
-  const std::string kin_name =
-      use_reco ? collections.electron_kinematics : "InclusiveKinematicsTruth";
+  const std::string kin_name = use_reco ? collections.electron_kinematics : "InclusiveKinematicsTruth";
   if (has_collection(frame, kin_name)) {
     const auto &kin = frame.get<edm4eic::InclusiveKinematicsCollection>(kin_name);
     if (!kin.empty()) {
@@ -252,14 +252,10 @@ int main(int argc, char *argv[]) {
   //========================================================================================
   // Grab and read jet information.
   //========================================================================================
-  auto *t_truth_cent = jet_tools::get_required_tree(
-      f_jets, "BreitFrameCentauroTruth", "match_jets_cf");
-  auto *t_truth_antikt = jet_tools::get_required_tree(
-      f_jets, "LabFrameAntiktTruth", "match_jets_cf");
-  auto *t_reco_cent = jet_tools::get_required_tree(
-      f_jets, "BreitFrameCentauroReco", "match_jets_cf");
-  auto *t_reco_antikt = jet_tools::get_required_tree(
-      f_jets, "LabFrameAntiktReco", "match_jets_cf");
+  auto *t_truth_cent = jet_tools::get_required_tree(f_jets, "BreitFrameCentauroTruth", "match_jets_cf");
+  auto *t_truth_antikt = jet_tools::get_required_tree(f_jets, "LabFrameAntiktTruth", "match_jets_cf");
+  auto *t_reco_cent = jet_tools::get_required_tree(f_jets, "BreitFrameCentauroReco", "match_jets_cf");
+  auto *t_reco_antikt = jet_tools::get_required_tree(f_jets, "LabFrameAntiktReco", "match_jets_cf");
 
   // Group jets by event.
   jet_tools::EventJets truth_cent_jets;
@@ -268,14 +264,10 @@ int main(int argc, char *argv[]) {
   jet_tools::EventJets reco_antikt_jets;
   jet_tools::JetTreeReadOptions jet_read_options;
   jet_read_options.require_four_momentum = true;
-  jet_tools::read_jet_tree(*t_truth_cent, args.max_events, truth_cent_jets,
-                           "match_jets_cf", jet_read_options);
-  jet_tools::read_jet_tree(*t_truth_antikt, args.max_events, truth_antikt_jets,
-                           "match_jets_cf", jet_read_options);
-  jet_tools::read_jet_tree(*t_reco_cent, args.max_events, reco_cent_jets,
-                           "match_jets_cf", jet_read_options);
-  jet_tools::read_jet_tree(*t_reco_antikt, args.max_events, reco_antikt_jets,
-                           "match_jets_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_truth_cent, args.max_events, truth_cent_jets, "match_jets_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_truth_antikt, args.max_events, truth_antikt_jets, "match_jets_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_reco_cent, args.max_events, reco_cent_jets, "match_jets_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_reco_antikt, args.max_events, reco_antikt_jets, "match_jets_cf", jet_read_options);
 
   DomainMap truth_events;
   DomainMap reco_events;
@@ -325,25 +317,26 @@ int main(int argc, char *argv[]) {
   const jet_tools::JetToolsCollections collections;
   const jet_tools::ElectronVetoCuts cuts;
   const double max_dR2 = args.match_dR * args.match_dR;
+  jet_tools::ProgressTicker progress;
 
   for (std::size_t i = 0; i < entries; ++i) {
-    if (i % 100 == 0) {
-      std::cout << "[match_jets_cf] event " << i << "/" << entries << "\r"
-                << std::flush;
+    if (progress.should_report(i)) {
+      const std::string message = std::string("[match_jets_cf] event ") +
+                                  std::to_string(i) + "/" +
+                                  std::to_string(entries);
+      progress.report(message);
     }
 
     const ULong64_t event_id = static_cast<ULong64_t>(i);
 
     // Find the jet entries for event_id.
-    const auto truth_iterator = truth_events.find(event_id);
-    const auto reco_iterator = reco_events.find(event_id);
+    const auto truth_it = truth_events.find(event_id);
+    const auto reco_it = reco_events.find(event_id);
 
-    const bool usable_truth = (truth_iterator != truth_events.end() &&
-                             !truth_iterator->second.centauro_breit.empty() &&
-                             !truth_iterator->second.antikt_lab.empty());
-    const bool usable_reco = (reco_iterator != reco_events.end() &&
-                            !reco_iterator->second.centauro_breit.empty() &&
-                            !reco_iterator->second.antikt_lab.empty());
+    const bool usable_truth = (truth_it != truth_events.end() && !truth_it->second.centauro_breit.empty() &&
+                             !truth_it->second.antikt_lab.empty());
+    const bool usable_reco = (reco_it != reco_events.end() && !reco_it->second.centauro_breit.empty() &&
+                            !reco_it->second.antikt_lab.empty());
     if (!usable_truth && !usable_reco) {
       continue;
     }
@@ -359,9 +352,9 @@ int main(int argc, char *argv[]) {
       ROOT::Math::Boost boost;
       ROOT::Math::Rotation3D rot;
       if (build_transform(frame, false, collections, cuts, boost, rot)) {
-        // Use truth_iterator->second to grab the jet_data from DomainMap <event_id, jet_data>.
-        match_domain_event(event_id, truth_iterator->second, boost, rot, max_dR2,
-                           best_row_truth, all_row_truth, best_truth, all_truth);
+        // Use truth_it->second to grab the jet_data from DomainMap <event_id, jet_data>.
+        match_domain_event(event_id, truth_it->second, boost, rot, max_dR2, best_row_truth, all_row_truth, 
+                           best_truth, all_truth);
       }
     }
 
@@ -369,12 +362,13 @@ int main(int argc, char *argv[]) {
       ROOT::Math::Boost boost;
       ROOT::Math::Rotation3D rot;
       if (build_transform(frame, true, collections, cuts, boost, rot)) {
-        match_domain_event(event_id, reco_iterator->second, boost, rot, max_dR2,
-                           best_row_reco, all_row_reco, best_reco, all_reco);
+        match_domain_event(event_id, reco_it->second, boost, rot, max_dR2, best_row_reco, all_row_reco, 
+                           best_reco, all_reco);
       }
     }
   }
-  std::cout << "[match_jets_cf] event " << entries << "/" << entries << "\n";
+  progress.finish(std::string("[match_jets_cf] event ") + std::to_string(entries) +
+                  "/" + std::to_string(entries));
 
   best_truth.Write();
   all_truth.Write();

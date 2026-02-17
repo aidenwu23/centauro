@@ -21,6 +21,7 @@
 #include <TFile.h>
 #include <TTree.h>
 
+#include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/math_helpers.h"
 #include "jet_tools/include/root_io.h"
 #include "jet_tools/include/types.h"
@@ -92,8 +93,7 @@ Args parse_args(int argc, char *argv[]) {
     std::cerr << "[match_jets_sf] min_match_pt_ratio must be finite and > 0\n";
     std::exit(1);
   }
-  if (!std::isfinite(args.max_match_pt_ratio) ||
-      args.max_match_pt_ratio < args.min_match_pt_ratio) {
+  if (!std::isfinite(args.max_match_pt_ratio) || args.max_match_pt_ratio < args.min_match_pt_ratio) {
     std::cerr << "[match_jets_sf] max_match_pt_ratio must be >= min_match_pt_ratio\n";
     std::exit(1);
   }
@@ -126,6 +126,7 @@ std::vector<std::pair<std::size_t, std::size_t>> match_truth_reco_pairs(
     std::size_t best_reco_index = reco_jets.size();
 
     for (std::size_t reco_index = 0; reco_index < reco_jets.size(); ++reco_index) {
+      // If reco was previously used in a truth match, skip it and find the next best match.
       if (reco_used[reco_index]) {
         continue;
       }
@@ -138,11 +139,9 @@ std::vector<std::pair<std::size_t, std::size_t>> match_truth_reco_pairs(
         continue;
       }
 
-      const double pT_ratio = (truth_jet.pT > 0.0)
-                                  ? (reco_jet.pT / truth_jet.pT)
-                                  : std::numeric_limits<double>::quiet_NaN();
-      if (!std::isfinite(pT_ratio) || pT_ratio < min_match_pt_ratio ||
-          pT_ratio > max_match_pt_ratio) {
+      const double pT_ratio = (truth_jet.pT > 0.0) ? (reco_jet.pT / truth_jet.pT) : std::numeric_limits<double>::quiet_NaN();
+      
+      if (!std::isfinite(pT_ratio) || pT_ratio < min_match_pt_ratio || pT_ratio > max_match_pt_ratio) {
         continue;
       }
 
@@ -151,6 +150,7 @@ std::vector<std::pair<std::size_t, std::size_t>> match_truth_reco_pairs(
     }
 
     if (best_reco_index != reco_jets.size()) {
+      // If paired successfully, set the reco jet to "used" so it never gets used again.
       reco_used[best_reco_index] = 1;
       pairs.push_back({truth_index, best_reco_index});
     }
@@ -170,10 +170,13 @@ void fill_matches_for_alg(const EventMap &events, double max_match_dR,
   }
   std::sort(event_ids.begin(), event_ids.end());
 
+  jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < event_ids.size(); ++i) {
-    if (i % 100 == 0) {
-      std::cout << "[match_jets_sf] " << progress_tag << " event " << i << "/"
-                << event_ids.size() << "\r" << std::flush;
+    if (progress.should_report(i)) {
+      const std::string message = std::string("[match_jets_sf] ") + progress_tag +
+                                  " event " + std::to_string(i) + "/" +
+                                  std::to_string(event_ids.size());
+      progress.report(message);
     }
 
     const ULong64_t event_id = event_ids[i];
@@ -211,8 +214,10 @@ void fill_matches_for_alg(const EventMap &events, double max_match_dR,
     }
   }
 
-  std::cout << "[match_jets_sf] " << progress_tag << " event " << event_ids.size()
-            << "/" << event_ids.size() << "\n";
+  const std::string done_message = std::string("[match_jets_sf] ") + progress_tag +
+                                   " event " + std::to_string(event_ids.size()) +
+                                   "/" + std::to_string(event_ids.size());
+  progress.finish(done_message);
 }
 
 } // namespace
@@ -232,14 +237,10 @@ int main(int argc, char *argv[]) {
   const char *centauro_truth_name = args.use_lab ? "LabFrameCentauroTruth" : "BreitFrameCentauroTruth";
   const char *centauro_reco_name = args.use_lab ? "LabFrameCentauroReco" : "BreitFrameCentauroReco";
 
-  auto *t_antikt_truth =
-      jet_tools::get_required_tree(fin, antikt_truth_name, "match_jets_sf");
-  auto *t_antikt_reco =
-      jet_tools::get_required_tree(fin, antikt_reco_name, "match_jets_sf");
-  auto *t_centauro_truth =
-      jet_tools::get_required_tree(fin, centauro_truth_name, "match_jets_sf");
-  auto *t_centauro_reco =
-      jet_tools::get_required_tree(fin, centauro_reco_name, "match_jets_sf");
+  auto *t_antikt_truth = jet_tools::get_required_tree(fin, antikt_truth_name, "match_jets_sf");
+  auto *t_antikt_reco = jet_tools::get_required_tree(fin, antikt_reco_name, "match_jets_sf");
+  auto *t_centauro_truth = jet_tools::get_required_tree(fin, centauro_truth_name, "match_jets_sf");
+  auto *t_centauro_reco = jet_tools::get_required_tree(fin, centauro_reco_name, "match_jets_sf");
 
   jet_tools::EventJets antikt_truth_events;
   jet_tools::EventJets antikt_reco_events;
@@ -247,14 +248,10 @@ int main(int argc, char *argv[]) {
   jet_tools::EventJets centauro_reco_events;
   jet_tools::JetTreeReadOptions jet_read_options;
   jet_read_options.require_four_momentum = true;
-  jet_tools::read_jet_tree(*t_antikt_truth, args.max_events, antikt_truth_events,
-                           "match_jets_sf", jet_read_options);
-  jet_tools::read_jet_tree(*t_antikt_reco, args.max_events, antikt_reco_events,
-                           "match_jets_sf", jet_read_options);
-  jet_tools::read_jet_tree(*t_centauro_truth, args.max_events, centauro_truth_events,
-                           "match_jets_sf", jet_read_options);
-  jet_tools::read_jet_tree(*t_centauro_reco, args.max_events, centauro_reco_events,
-                           "match_jets_sf", jet_read_options);
+  jet_tools::read_jet_tree(*t_antikt_truth, args.max_events, antikt_truth_events, "match_jets_sf", jet_read_options);
+  jet_tools::read_jet_tree(*t_antikt_reco, args.max_events, antikt_reco_events, "match_jets_sf", jet_read_options);
+  jet_tools::read_jet_tree(*t_centauro_truth, args.max_events, centauro_truth_events, "match_jets_sf", jet_read_options);
+  jet_tools::read_jet_tree(*t_centauro_reco, args.max_events, centauro_reco_events, "match_jets_sf", jet_read_options);
 
   EventMap antikt_events;
   EventMap centauro_events;
@@ -285,12 +282,10 @@ int main(int argc, char *argv[]) {
   jet_tools::setup_truth_reco_match_tree(antikt_matches, antikt_row);
   jet_tools::setup_truth_reco_match_tree(centauro_matches, centauro_row);
 
-  fill_matches_for_alg(antikt_events, args.match_dR, args.min_match_pt_ratio,
-                       args.max_match_pt_ratio, antikt_matches, antikt_row,
-                       "anti-kt");
-  fill_matches_for_alg(centauro_events, args.match_dR, args.min_match_pt_ratio,
-                       args.max_match_pt_ratio, centauro_matches, centauro_row,
-                       "centauro");
+  fill_matches_for_alg(antikt_events, args.match_dR, args.min_match_pt_ratio, args.max_match_pt_ratio, 
+                       antikt_matches, antikt_row, "anti-kt");
+  fill_matches_for_alg(centauro_events, args.match_dR, args.min_match_pt_ratio, args.max_match_pt_ratio, 
+                       centauro_matches, centauro_row, "centauro");
 
   antikt_matches.Write();
   centauro_matches.Write();

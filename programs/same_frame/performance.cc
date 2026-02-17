@@ -17,6 +17,7 @@ Run:
 #include <TTree.h>
 
 #include "jet_tools/include/plot_helpers.h"
+#include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/root_io.h"
 
 #include <algorithm>
@@ -257,33 +258,33 @@ void collect_alg_data(const std::string& label, const EventJets& truth_jets,
   out.deta.reserve(matches.size());
   out.dR.reserve(matches.size());
 
-  std::size_t last_chars = 0;
+  jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < matches.size(); ++i) {
-    if (i % 100 == 0) {
+    if (progress.should_report(i)) {
       const std::string message = std::string("[performance] collect ") + label + " " +
                                   std::to_string(i) + "/" +
                                   std::to_string(matches.size());
-      jet_tools::print_progress(message, last_chars);
+      progress.report(message);
     }
     const auto& match = matches[i];
     if (match.truth_index < 0 || match.reco_index < 0) {
       continue;
     }
 
-    const auto truth_iterator = truth_jets.find(match.event);
-    const auto reco_iterator = reco_jets.find(match.event);
-    if (truth_iterator == truth_jets.end() || reco_iterator == reco_jets.end()) {
+    const auto truth_it = truth_jets.find(match.event);
+    const auto reco_it = reco_jets.find(match.event);
+    if (truth_it == truth_jets.end() || reco_it == reco_jets.end()) {
       continue;
     }
 
     const std::size_t truth_index = static_cast<std::size_t>(match.truth_index);
     const std::size_t reco_index = static_cast<std::size_t>(match.reco_index);
-    if (truth_index >= truth_iterator->second.size() || reco_index >= reco_iterator->second.size()) {
+    if (truth_index >= truth_it->second.size() || reco_index >= reco_it->second.size()) {
       continue;
     }
 
-    const auto& truth = truth_iterator->second[truth_index];
-    const auto& reco = reco_iterator->second[reco_index];
+    const auto& truth = truth_it->second[truth_index];
+    const auto& reco = reco_it->second[reco_index];
     if (!pass_jet_cuts(truth, args)) {
       continue;
     }
@@ -318,8 +319,7 @@ void collect_alg_data(const std::string& label, const EventJets& truth_jets,
   const std::string done_message = std::string("[performance] collect ") + label + " " +
                                    std::to_string(matches.size()) + "/" +
                                    std::to_string(matches.size());
-  jet_tools::print_progress(done_message, last_chars);
-  std::cout << "\n";
+  progress.finish(done_message);
 }
 
 

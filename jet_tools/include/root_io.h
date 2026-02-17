@@ -42,7 +42,6 @@ struct CrossFrameAllMatchRow {
 };
 
 void ensure_parent(const std::string& path);
-void print_progress(const std::string& message, std::size_t& last_chars);
 
 TTree* get_required_tree(TFile& file, const char* tree_name, const char* tag);
 

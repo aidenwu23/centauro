@@ -11,6 +11,8 @@
 namespace jet_tools {
 namespace {
 
+// TODO: fix this.
+
 void coarsen_bins(std::vector<std::vector<double>> &bin_resp,
                   std::vector<double> &scales, std::size_t N_min) {
   const std::size_t n = bin_resp.size();

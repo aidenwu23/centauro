@@ -26,6 +26,8 @@ Run:
 #include <TStyle.h>
 #include <TTree.h>
 
+#include "jet_tools/include/event_progress.h"
+
 namespace {
 
 struct Args {
@@ -144,12 +146,8 @@ struct HistGroup {
     for (std::size_t i = 0; i + 1 < q2_edges.size(); ++i) {
       const double lo = q2_edges[i];
       const double hi = q2_edges[i + 1U];
-      const std::string range =
-          std::to_string(static_cast<int>(lo)) + "_" +
-          std::to_string(static_cast<int>(hi));
-      const std::string title_range =
-          std::to_string(static_cast<int>(lo)) + "-" +
-          std::to_string(static_cast<int>(hi));
+      const std::string range = std::to_string(static_cast<int>(lo)) + "_" + std::to_string(static_cast<int>(hi));
+      const std::string title_range = std::to_string(static_cast<int>(lo)) + "-" + std::to_string(static_cast<int>(hi));
 
       q2_truth.emplace_back(make_eta_z_hist(
           prefix + "_eta_z_truth_Q2_" + range,
@@ -233,23 +231,22 @@ FillStats fill_from_tree(TTree &tree, const Args &args, const std::string &tag,
   tree.SetBranchAddress("Q2", &q2);
 
   const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
-  ULong64_t last_event_id = std::numeric_limits<ULong64_t>::max();
+  jet_tools::EventCounter event_counter;
+  jet_tools::ProgressTicker progress;
 
   for (std::size_t i = 0; i < entries; ++i) {
     tree.GetEntry(static_cast<Long64_t>(i));
     ++stats.scanned;
 
     // Count events by event_id transitions while streaming jet rows once.
-    if (event_id != last_event_id) {
-      last_event_id = event_id;
-      ++stats.events_seen;
-      if (stats.events_seen % 100 == 0) {
-        std::cout << "[eta_vs_z] " << tag << " event " << stats.events_seen
-                  << "\r" << std::flush;
-      }
+    if (event_counter.observe(event_id)) {
+      stats.events_seen = event_counter.events_seen();
       if (args.max_events != std::numeric_limits<std::size_t>::max() &&
           stats.events_seen > args.max_events) {
         break;
+      }
+      if (progress.should_report(stats.events_seen)) {
+        progress.report(std::string("[eta_vs_z] ") + tag + " event " + std::to_string(stats.events_seen));
       }
     }
 
@@ -282,7 +279,8 @@ FillStats fill_from_tree(TTree &tree, const Args &args, const std::string &tag,
     }
   }
 
-  std::cout << "[eta_vs_z] " << tag << " event " << stats.events_seen << "\n";
+  progress.finish(std::string("[eta_vs_z] ") + tag + " event " +
+                  std::to_string(stats.events_seen));
   return stats;
 }
 
@@ -319,26 +317,19 @@ int main(int argc, char *argv[]) {
   constexpr int kZBins = 120;
   constexpr int kEtaBins = 240;
   constexpr double kQ2OverflowMin = 800.0;
-  const std::vector<double> q2_edges{
-      100.0, 200.0, 400.0, 800.0, 1600.0, 3200.0, 6400.0, 12800.0};
+  const std::vector<double> q2_edges{100.0, 200.0, 400.0, 800.0, 1600.0, 3200.0, 6400.0, 12800.0};
 
-  HistGroup h_centauro("centauro", "Centauro", kZBins, kEtaBins, q2_edges,
-                       kQ2OverflowMin);
-  HistGroup h_antikt("antikt", "anti-k_{t}", kZBins, kEtaBins, q2_edges,
-                     kQ2OverflowMin);
+  HistGroup h_centauro("centauro", "Centauro", kZBins, kEtaBins, q2_edges, kQ2OverflowMin);
+  HistGroup h_antikt("antikt", "anti-k_{t}", kZBins, kEtaBins, q2_edges, kQ2OverflowMin);
 
-  const FillStats s_cent_truth =
-      fill_from_tree(*t_cent_truth, args, "centauro truth", q2_edges,
-                     kQ2OverflowMin, select_hists(h_centauro, false));
-  const FillStats s_cent_reco =
-      fill_from_tree(*t_cent_reco, args, "centauro reco", q2_edges,
-                     kQ2OverflowMin, select_hists(h_centauro, true));
-  const FillStats s_antikt_truth =
-      fill_from_tree(*t_antikt_truth, args, "antikt truth", q2_edges,
-                     kQ2OverflowMin, select_hists(h_antikt, false));
-  const FillStats s_antikt_reco =
-      fill_from_tree(*t_antikt_reco, args, "antikt reco", q2_edges,
-                     kQ2OverflowMin, select_hists(h_antikt, true));
+  const FillStats s_cent_truth = fill_from_tree(*t_cent_truth, args, "centauro truth", q2_edges, kQ2OverflowMin, 
+                                                select_hists(h_centauro, false));
+  const FillStats s_cent_reco = fill_from_tree(*t_cent_reco, args, "centauro reco", q2_edges, kQ2OverflowMin, 
+                                                select_hists(h_centauro, true));
+  const FillStats s_antikt_truth = fill_from_tree(*t_antikt_truth, args, "antikt truth", q2_edges, 
+                                                  kQ2OverflowMin, select_hists(h_antikt, false));
+  const FillStats s_antikt_reco = fill_from_tree(*t_antikt_reco, args, "antikt reco", q2_edges, kQ2OverflowMin, 
+                                                  select_hists(h_antikt, true));
 
   TDirectory *cent_dir = fout.mkdir("centauro");
   TDirectory *antikt_dir = fout.mkdir("antikt");
@@ -348,10 +339,8 @@ int main(int argc, char *argv[]) {
   fout.Close();
   fin.Close();
 
-  const std::size_t total_kept = s_cent_truth.kept + s_cent_reco.kept +
-                                 s_antikt_truth.kept + s_antikt_reco.kept;
-  const std::size_t total_q2 = s_cent_truth.q2_filled + s_cent_reco.q2_filled +
-                               s_antikt_truth.q2_filled +
+  const std::size_t total_kept = s_cent_truth.kept + s_cent_reco.kept + s_antikt_truth.kept + s_antikt_reco.kept;
+  const std::size_t total_q2 = s_cent_truth.q2_filled + s_cent_reco.q2_filled + s_antikt_truth.q2_filled +
                                s_antikt_reco.q2_filled;
 
   std::cout << "[eta_vs_z] kept jets: " << total_kept << "\n";

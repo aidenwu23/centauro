@@ -1,5 +1,7 @@
 #include "jet_tools/include/root_io.h"
 
+#include "jet_tools/include/event_progress.h"
+
 #include <TFile.h>
 #include <TTree.h>
 
@@ -39,14 +41,6 @@ std::string make_read_message(const std::string& tag, const char* tree_name,
          std::to_string(index) + "/" + std::to_string(total);
 }
 
-void finish_read_message(const std::string& tag, TTree& tree, std::size_t entries,
-                         std::size_t& last_chars) {
-  const std::string done_message =
-      make_read_message(tag, tree.GetName(), entries, entries);
-  print_progress(done_message, last_chars);
-  std::cout << "\n";
-}
-
 }  // namespace
 
 void ensure_parent(const std::string& path) {
@@ -54,15 +48,6 @@ void ensure_parent(const std::string& path) {
   if (p.has_parent_path()) {
     std::filesystem::create_directories(p.parent_path());
   }
-}
-
-void print_progress(const std::string& message, std::size_t& last_chars) {
-  std::cout << '\r' << message;
-  if (last_chars > message.size()) {
-    std::cout << std::string(last_chars - message.size(), ' ');
-  }
-  std::cout << std::flush;
-  last_chars = message.size();
 }
 
 TTree* get_required_tree(TFile& file, const char* tree_name, const char* tag) {
@@ -169,15 +154,15 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
   }
 
   const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
-  std::size_t last_chars = 0;
+  EventLimitGate event_gate(max_events);
+  ProgressTicker progress;
 
   for (std::size_t i = 0; i < entries; ++i) {
-    if (i % 100 == 0) {
-      print_progress(make_read_message(tag, tree.GetName(), i, entries), last_chars);
+    if (progress.should_report(i)) {
+      progress.report(make_read_message(tag, tree.GetName(), i, entries));
     }
     tree.GetEntry(static_cast<Long64_t>(i));
-    if (max_events != std::numeric_limits<std::size_t>::max() &&
-        static_cast<std::size_t>(event_id) >= max_events) {
+    if (!event_gate.allow(event_id)) {
       continue;
     }
 
@@ -225,7 +210,7 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
     events[event_id].push_back(std::move(jet));
   }
 
-  finish_read_message(tag, tree, entries, last_chars);
+  progress.finish(make_read_message(tag, tree.GetName(), entries, entries));
 }
 
 // Shared reader for same-frame match trees.
@@ -246,20 +231,20 @@ std::vector<TruthRecoMatchRow> read_match_tree(TTree& tree, std::size_t max_even
   const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
   rows.reserve(entries);
 
-  std::size_t last_chars = 0;
+  EventLimitGate event_gate(max_events);
+  ProgressTicker progress;
   for (std::size_t i = 0; i < entries; ++i) {
-    if (i % 100 == 0) {
-      print_progress(make_read_message(tag, tree.GetName(), i, entries), last_chars);
+    if (progress.should_report(i)) {
+      progress.report(make_read_message(tag, tree.GetName(), i, entries));
     }
     tree.GetEntry(static_cast<Long64_t>(i));
-    if (max_events != std::numeric_limits<std::size_t>::max() &&
-        static_cast<std::size_t>(row.event) >= max_events) {
+    if (!event_gate.allow(row.event)) {
       continue;
     }
     rows.push_back(row);
   }
 
-  finish_read_message(tag, tree, entries, last_chars);
+  progress.finish(make_read_message(tag, tree.GetName(), entries, entries));
   return rows;
 }
 

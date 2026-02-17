@@ -16,6 +16,7 @@
 #include <TStyle.h>
 #include <TTree.h>
 
+#include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/root_io.h"
 
 #include <algorithm>
@@ -373,12 +374,12 @@ void collect_alg_data(const std::string& label, int alg, const EventJets& truth_
   matched_truth_keys.reserve(matches.size());
   matched_reco_keys.reserve(matches.size());
 
-  std::size_t last_chars = 0;
+  jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < matches.size(); ++i) {
-    if (i % 100 == 0) {
+    if (progress.should_report(i)) {
       const std::string message = std::string("[controls] collect ") + label + " " +
                                   std::to_string(i) + "/" + std::to_string(matches.size());
-      jet_tools::print_progress(message, last_chars);
+      progress.report(message);
     }
 
     const auto& match = matches[i];
@@ -446,8 +447,7 @@ void collect_alg_data(const std::string& label, int alg, const EventJets& truth_
   const std::string done_message = std::string("[controls] collect ") + label + " " +
                                    std::to_string(matches.size()) + "/" +
                                    std::to_string(matches.size());
-  jet_tools::print_progress(done_message, last_chars);
-  std::cout << "\n";
+  progress.finish(done_message);
 
   out.summary.truth_matched = static_cast<ULong64_t>(matched_truth_keys.size());
   out.summary.reco_matched = static_cast<ULong64_t>(matched_reco_keys.size());

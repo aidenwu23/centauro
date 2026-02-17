@@ -47,6 +47,7 @@ frame the input collection is.
 
 #include "jet_tools/include/beam_helpers.h"
 #include "jet_tools/include/electron_veto.h"
+#include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/jet_builders.h"
 #include "jet_tools/include/root_io.h"
 #include "jet_tools/include/transform_breit.h"
@@ -502,11 +503,9 @@ int main(int argc, char *argv[]) {
   // This defers jet thresholding to filter_threshold_frame so all jet collections
   // are evaluated in one consistent frame.
   const double native_max_eta = (args.threshold_frame == ThresholdFrame::Native)
-                                    ? args.max_eta
-                                    : std::numeric_limits<double>::infinity();
+                                    ? args.max_eta : std::numeric_limits<double>::infinity();
   const double native_min_jet_pT = (args.threshold_frame == ThresholdFrame::Native)
-                                       ? args.min_jet_pT
-                                       : 0.0;
+                                       ? args.min_jet_pT : 0.0;
 
   TFile fout(args.output.c_str(), "RECREATE");
   if (!fout.IsOpen()) {
@@ -523,11 +522,15 @@ int main(int argc, char *argv[]) {
   JetTreeWriter t_lab_cent_reco("LabFrameCentauroReco", "lab centauro reco jets");
   JetTreeWriter t_breit_antikt_reco("BreitFrameAntiktReco", "breit antikt reco jets");
   JetTreeWriter t_breit_cent_reco("BreitFrameCentauroReco", "breit centauro reco jets");
+  jet_tools::ProgressTicker progress;
 
   // Event loop.
   for (std::size_t i = 0; i < entries; ++i) {
-    if (i % 100 == 0) {
-      std::cout << "[cluster_jets] event " << i << "/" << entries << "\r" << std::flush;
+    if (progress.should_report(i)) {
+      const std::string message = std::string("[cluster_jets] event ") +
+                                  std::to_string(i) + "/" +
+                                  std::to_string(entries);
+      progress.report(message);
     }
 
     auto data = reader.readEntry("events", i);
@@ -609,15 +612,15 @@ int main(int argc, char *argv[]) {
 
       // For ReconstructedParticles.
       if (reco_lab_particles) {
-        const auto veto = jet_tools::find_scattered_particles_reco(
-            frame, *reco_lab_particles, collections, veto_cuts);
+        const auto veto = jet_tools::find_scattered_particles_reco(frame, *reco_lab_particles, collections, 
+            veto_cuts);
         skip_reco_lab = to_set(veto.veto_indices);
       }
 
       // For ReconstructedBreitFrameParticles.
       if (reco_breit_particles) {
-        const auto veto = jet_tools::find_scattered_particles_reco_breit(
-            frame, *reco_breit_particles, collections, veto_cuts);
+        const auto veto = jet_tools::find_scattered_particles_reco_breit(frame, *reco_breit_particles, 
+            collections, veto_cuts);
         skip_reco_breit = to_set(veto.veto_indices);
       }
     }
@@ -628,20 +631,16 @@ int main(int argc, char *argv[]) {
     if (args.threshold_frame == ThresholdFrame::Native) {
       // Each collection builds the skip indices from themselves.
       if (truth_lab_particles) {
-        jet_tools::build_skip_indices(*truth_lab_particles, cst_cuts,
-                                      &skip_truth_lab, skip_truth_lab_all);
+        jet_tools::build_skip_indices(*truth_lab_particles, cst_cuts, &skip_truth_lab, skip_truth_lab_all);
       }
       if (truth_breit_particles) {
-        jet_tools::build_skip_indices(*truth_breit_particles, cst_cuts,
-                                      &skip_truth_breit, skip_truth_breit_all);
+        jet_tools::build_skip_indices(*truth_breit_particles, cst_cuts, &skip_truth_breit, skip_truth_breit_all);
       }
       if (reco_lab_particles) {
-        jet_tools::build_skip_indices(*reco_lab_particles, cst_cuts,
-                                      &skip_reco_lab, skip_reco_lab_all);
+        jet_tools::build_skip_indices(*reco_lab_particles, cst_cuts, &skip_reco_lab, skip_reco_lab_all);
       }
       if (reco_breit_particles) {
-        jet_tools::build_skip_indices(*reco_breit_particles, cst_cuts,
-                                      &skip_reco_breit, skip_reco_breit_all);
+        jet_tools::build_skip_indices(*reco_breit_particles, cst_cuts, &skip_reco_breit, skip_reco_breit_all);
       }
     } else {
       // Build skip indices in the chosen threshold source frame, then reuse them in
@@ -688,8 +687,7 @@ int main(int argc, char *argv[]) {
 
       // Append additional indices to the base electron list.
       if (truth_source_particles) {
-        jet_tools::build_skip_indices(*truth_source_particles, cst_cuts,
-                                      truth_electron_skip, skip_truth_lab_all);
+        jet_tools::build_skip_indices(*truth_source_particles, cst_cuts, truth_electron_skip, skip_truth_lab_all);
         skip_truth_breit_all = skip_truth_lab_all;
       } else {
         truth_lab_particles = nullptr;
@@ -697,8 +695,7 @@ int main(int argc, char *argv[]) {
       }
 
       if (reco_source_particles) {
-        jet_tools::build_skip_indices(*reco_source_particles, cst_cuts,
-                                      reco_electron_skip, skip_reco_lab_all);
+        jet_tools::build_skip_indices(*reco_source_particles, cst_cuts, reco_electron_skip, skip_reco_lab_all);
         skip_reco_breit_all = skip_reco_lab_all;
       } else {
         reco_lab_particles = nullptr;
@@ -754,7 +751,8 @@ int main(int argc, char *argv[]) {
                       t_breit_antikt_reco, t_breit_cent_reco);
   }
 
-  std::cout << "[cluster_jets] event " << entries << "/" << entries << "\n";
+  progress.finish(std::string("[cluster_jets] event ") + std::to_string(entries) +
+                  "/" + std::to_string(entries));
 
   // Write out the trees.
   t_lab_antikt_truth.tree.Write();

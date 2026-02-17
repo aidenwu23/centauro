@@ -29,6 +29,7 @@
 #include <TH2D.h>
 #include <TTree.h>
 
+#include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/root_io.h"
 
 namespace {
@@ -189,15 +190,17 @@ void process_best_matches(TTree& tree, const EventJets& centauro_jets,
   tree.SetBranchAddress("dR", &row.dR);
 
   const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
+  jet_tools::EventLimitGate event_gate(max_events);
+  jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < entries; ++i) {
-    if (i % 100 == 0) {
-      std::cout << "[splitting_cf] best " << tree.GetName() << " " << i << "/"
-                << entries << "\r" << std::flush;
+    if (progress.should_report(i)) {
+      const std::string message = std::string("[splitting_cf] best ") + tree.GetName() + " " + 
+                                  std::to_string(i) + "/" + std::to_string(entries);
+      progress.report(message);
     }
     tree.GetEntry(static_cast<Long64_t>(i));
 
-    if (max_events != std::numeric_limits<std::size_t>::max() &&
-        static_cast<std::size_t>(row.event) >= max_events) {
+    if (!event_gate.allow(row.event)) {
       continue;
     }
     if (!std::isfinite(row.dR)) {
@@ -208,9 +211,9 @@ void process_best_matches(TTree& tree, const EventJets& centauro_jets,
     }
 
     // Grab event ids.
-    const auto centauro_iterator = centauro_jets.find(row.event);
-    const auto antikt_iterator = antikt_jets.find(row.event);
-    if (centauro_iterator == centauro_jets.end() || antikt_iterator == antikt_jets.end()) {
+    const auto centauro_it = centauro_jets.find(row.event);
+    const auto antikt_it = antikt_jets.find(row.event);
+    if (centauro_it == centauro_jets.end() || antikt_it == antikt_jets.end()) {
       continue;
     }
 
@@ -219,13 +222,13 @@ void process_best_matches(TTree& tree, const EventJets& centauro_jets,
     }
     const std::size_t centauro_index = static_cast<std::size_t>(row.centauro_index);
     const std::size_t antikt_index = static_cast<std::size_t>(row.antikt_index);
-    if (centauro_index >= centauro_iterator->second.size() || antikt_index >= antikt_iterator->second.size()) {
+    if (centauro_index >= centauro_it->second.size() || antikt_index >= antikt_it->second.size()) {
       continue;
     }
 
     // Grab jet info.
-    const auto& centauro = centauro_iterator->second[centauro_index];
-    const auto& antikt = antikt_iterator->second[antikt_index];
+    const auto& centauro = centauro_it->second[centauro_index];
+    const auto& antikt = antikt_it->second[antikt_index];
     if (!std::isfinite(centauro.pT) || centauro.pT <= 0.0 || !std::isfinite(antikt.pT)) {
       continue;
     }
@@ -259,7 +262,8 @@ void process_best_matches(TTree& tree, const EventJets& centauro_jets,
       h.h_soc_energy->Fill(soc.soc_energy);
     }
   }
-  std::cout << "[splitting_cf] best " << tree.GetName() << " " << entries << "/" << entries << "\n";
+  progress.finish(std::string("[splitting_cf] best ") + tree.GetName() + " " +
+                  std::to_string(entries) + "/" + std::to_string(entries));
 }
 
 // TODO: expand process_all_matches to not only deal with multiplicity.
@@ -276,15 +280,18 @@ void process_all_matches(TTree& tree, std::size_t max_events, DomainHists& h) {
   tree.SetBranchAddress("antikt_indices", &row.antikt_indices);
 
   const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
+  jet_tools::EventLimitGate event_gate(max_events);
+  jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < entries; ++i) {
-    if (i % 100 == 0) {
-      std::cout << "[splitting_cf] all " << tree.GetName() << " " << i << "/"
-                << entries << "\r" << std::flush;
+    if (progress.should_report(i)) {
+      const std::string message = std::string("[splitting_cf] all ") +
+                                  tree.GetName() + " " + std::to_string(i) +
+                                  "/" + std::to_string(entries);
+      progress.report(message);
     }
     tree.GetEntry(static_cast<Long64_t>(i));
 
-    if (max_events != std::numeric_limits<std::size_t>::max() &&
-        static_cast<std::size_t>(row.event) >= max_events) {
+    if (!event_gate.allow(row.event)) {
       continue;
     }
     if (row.centauro_index < 0 || row.antikt_indices == nullptr) {
@@ -294,7 +301,8 @@ void process_all_matches(TTree& tree, std::size_t max_events, DomainHists& h) {
     const std::size_t multiplicity = row.antikt_indices->size();
     h.h_centauro_match_multiplicity->Fill(static_cast<double>(multiplicity));
   }
-  std::cout << "[splitting_cf] all " << tree.GetName() << " " << entries << "/"<< entries << "\n";
+  progress.finish(std::string("[splitting_cf] all ") + tree.GetName() + " " +
+                  std::to_string(entries) + "/" + std::to_string(entries));
 }
 
 }  // namespace
@@ -318,23 +326,15 @@ int main(int argc, char* argv[]) {
   //=======================================================================================
   // Grab matches and copy the jet values.
   //=======================================================================================
-  auto* t_best_truth =
-      jet_tools::get_required_tree(f_matches, "best_matches_truth", "splitting_cf");
-  auto* t_all_truth =
-      jet_tools::get_required_tree(f_matches, "all_matches_truth", "splitting_cf");
-  auto* t_best_reco =
-      jet_tools::get_required_tree(f_matches, "best_matches_reco", "splitting_cf");
-  auto* t_all_reco =
-      jet_tools::get_required_tree(f_matches, "all_matches_reco", "splitting_cf");
+  auto* t_best_truth = jet_tools::get_required_tree(f_matches, "best_matches_truth", "splitting_cf");
+  auto* t_all_truth = jet_tools::get_required_tree(f_matches, "all_matches_truth", "splitting_cf");
+  auto* t_best_reco = jet_tools::get_required_tree(f_matches, "best_matches_reco", "splitting_cf");
+  auto* t_all_reco = jet_tools::get_required_tree(f_matches, "all_matches_reco", "splitting_cf");
 
-  auto* t_centauro_truth =
-      jet_tools::get_required_tree(f_jets, "BreitFrameCentauroTruth", "splitting_cf");
-  auto* t_antikt_truth =
-      jet_tools::get_required_tree(f_jets, "LabFrameAntiktTruth", "splitting_cf");
-  auto* t_centauro_reco =
-      jet_tools::get_required_tree(f_jets, "BreitFrameCentauroReco", "splitting_cf");
-  auto* t_antikt_reco =
-      jet_tools::get_required_tree(f_jets, "LabFrameAntiktReco", "splitting_cf");
+  auto* t_centauro_truth = jet_tools::get_required_tree(f_jets, "BreitFrameCentauroTruth", "splitting_cf");
+  auto* t_antikt_truth = jet_tools::get_required_tree(f_jets, "LabFrameAntiktTruth", "splitting_cf");
+  auto* t_centauro_reco = jet_tools::get_required_tree(f_jets, "BreitFrameCentauroReco", "splitting_cf");
+  auto* t_antikt_reco = jet_tools::get_required_tree(f_jets, "LabFrameAntiktReco", "splitting_cf");
 
   EventJets centauro_truth;
   EventJets antikt_truth;
@@ -343,14 +343,10 @@ int main(int argc, char* argv[]) {
   jet_tools::JetTreeReadOptions jet_read_options;
   jet_read_options.require_n_constituents = true;
   jet_read_options.require_constituent_vectors = true;
-  jet_tools::read_jet_tree(*t_centauro_truth, args.max_events, centauro_truth,
-                           "splitting_cf", jet_read_options);
-  jet_tools::read_jet_tree(*t_antikt_truth, args.max_events, antikt_truth,
-                           "splitting_cf", jet_read_options);
-  jet_tools::read_jet_tree(*t_centauro_reco, args.max_events, centauro_reco,
-                           "splitting_cf", jet_read_options);
-  jet_tools::read_jet_tree(*t_antikt_reco, args.max_events, antikt_reco,
-                           "splitting_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_centauro_truth, args.max_events, centauro_truth, "splitting_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_antikt_truth, args.max_events, antikt_truth, "splitting_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_centauro_reco, args.max_events, centauro_reco, "splitting_cf", jet_read_options);
+  jet_tools::read_jet_tree(*t_antikt_reco, args.max_events, antikt_reco, "splitting_cf", jet_read_options);
 
   TFile fout(args.output.c_str(), "RECREATE");
   if (!fout.IsOpen()) {
@@ -367,64 +363,43 @@ int main(int argc, char* argv[]) {
   TDirectory* dir_nconst = fout.mkdir("nconst");
   TDirectory* dir_match = fout.mkdir("match");
   TDirectory* dir_shared_over_centauro = fout.mkdir("shared_over_centauro");
-  if (!dir_ratio || !dir_eta_lab || !dir_eta_breit || !dir_nconst || !dir_match ||
-      !dir_shared_over_centauro) {
+  if (!dir_ratio || !dir_eta_lab || !dir_eta_breit || !dir_nconst || !dir_match || !dir_shared_over_centauro) {
     std::cerr << "[splitting_cf] failed to create output directories\n";
     return 1;
   }
 
-  TH1D h_ratio_lab_reco(
-      "pT_ratio_antikt_centauro_lab_reco",
-      "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} (reco);ratio;jets", 120, 0.0,
-      3.0);
-  TH1D h_ratio_lab_truth(
-      "pT_ratio_antikt_centauro_lab_truth",
-      "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} (truth);ratio;jets", 120, 0.0,
-      3.0);
-  TH2D h_ratio_eta_lab_reco(
-      "pT_ratio_antikt_centauro_vs_eta_lab_reco",
+  TH1D h_ratio_lab_reco("pT_ratio_antikt_centauro_lab_reco",
+      "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} (reco);ratio;jets", 120, 0.0, 3.0);
+  TH1D h_ratio_lab_truth("pT_ratio_antikt_centauro_lab_truth",
+      "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} (truth);ratio;jets", 120, 0.0, 3.0);
+  TH2D h_ratio_eta_lab_reco("pT_ratio_antikt_centauro_vs_eta_lab_reco",
       "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} vs #eta_{lab} (reco);#eta_{lab};ratio",
       120, -6.0, 6.0, 120, 0.0, 10.0);
-  TH2D h_ratio_eta_lab_truth(
-      "pT_ratio_antikt_centauro_vs_eta_lab_truth",
+  TH2D h_ratio_eta_lab_truth("pT_ratio_antikt_centauro_vs_eta_lab_truth",
       "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} vs #eta_{lab} (truth);#eta_{lab};ratio",
       120, -6.0, 6.0, 120, 0.0, 10.0);
-  TH2D h_ratio_eta_breit_reco(
-      "pT_ratio_antikt_centauro_vs_eta_breit_reco",
+  TH2D h_ratio_eta_breit_reco("pT_ratio_antikt_centauro_vs_eta_breit_reco",
       "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} vs #eta_{Breit} (reco);#eta_{Breit};ratio",
       120, -6.0, 6.0, 120, 0.0, 10.0);
-  TH2D h_ratio_eta_breit_truth(
-      "pT_ratio_antikt_centauro_vs_eta_breit_truth",
+  TH2D h_ratio_eta_breit_truth("pT_ratio_antikt_centauro_vs_eta_breit_truth",
       "p_{T,lab}^{anti-k_{t}}/p_{T,lab}^{Centauro} vs #eta_{Breit} (truth);#eta_{Breit};ratio",
       120, -6.0, 6.0, 120, 0.0, 10.0);
-  TH1D h_nconst_antikt_reco(
-      "nconst_antikt_reco", "Nconst (anti-k_{t}, reco);Nconst;jets", 120, 0.0,
+  TH1D h_nconst_antikt_reco("nconst_antikt_reco", "Nconst (anti-k_{t}, reco);Nconst;jets", 120, 0.0,
       120.0);
-  TH1D h_nconst_centauro_truth(
-      "nconst_centauro_truth", "Nconst (Centauro, truth);Nconst;jets", 120, 0.0,
+  TH1D h_nconst_centauro_truth("nconst_centauro_truth", "Nconst (Centauro, truth);Nconst;jets", 120, 0.0,
       120.0);
-  TH1D h_nconst_antikt_truth(
-      "nconst_antikt_truth", "Nconst (anti-k_{t}, truth);Nconst;jets", 120, 0.0,
+  TH1D h_nconst_antikt_truth("nconst_antikt_truth", "Nconst (anti-k_{t}, truth);Nconst;jets", 120, 0.0,
       120.0);
-  TH1D h_nconst_centauro_reco(
-      "nconst_centauro_reco", "Nconst (Centauro, reco);Nconst;jets", 120, 0.0,
+  TH1D h_nconst_centauro_reco("nconst_centauro_reco", "Nconst (Centauro, reco);Nconst;jets", 120, 0.0,
       120.0);
-  TH1D h_soc_count_reco(
-      "soc_count_reco", "SoC count (reco);SoC count;jets", 60, 0.0, 1.0);
-  TH1D h_soc_count_truth(
-      "soc_count_truth", "SoC count (truth);SoC count;jets", 60, 0.0, 1.0);
-  TH1D h_soc_energy_reco(
-      "soc_energy_reco", "SoC energy (reco);SoC energy;jets", 60, 0.0, 1.0);
-  TH1D h_soc_energy_truth(
-      "soc_energy_truth", "SoC energy (truth);SoC energy;jets", 60, 0.0, 1.0);
-  TH1D h_centauro_mult_reco(
-      "centauro_match_multiplicity_reco",
-      "Centauro match multiplicity (reco);N(anti-k_{t}) per Centauro;Centauro",
-      10, 0.5, 10.5);
-  TH1D h_centauro_mult_truth(
-      "centauro_match_multiplicity_truth",
-      "Centauro match multiplicity (truth);N(anti-k_{t}) per Centauro;Centauro",
-      10, 0.5, 10.5);
+  TH1D h_soc_count_reco("soc_count_reco", "SoC count (reco);SoC count;jets", 60, 0.0, 1.0);
+  TH1D h_soc_count_truth("soc_count_truth", "SoC count (truth);SoC count;jets", 60, 0.0, 1.0);
+  TH1D h_soc_energy_reco("soc_energy_reco", "SoC energy (reco);SoC energy;jets", 60, 0.0, 1.0);
+  TH1D h_soc_energy_truth("soc_energy_truth", "SoC energy (truth);SoC energy;jets", 60, 0.0, 1.0);
+  TH1D h_centauro_mult_reco("centauro_match_multiplicity_reco",
+      "Centauro match multiplicity (reco);N(anti-k_{t}) per Centauro;Centauro", 10, 0.5, 10.5);
+  TH1D h_centauro_mult_truth("centauro_match_multiplicity_truth",
+      "Centauro match multiplicity (truth);N(anti-k_{t}) per Centauro;Centauro", 10, 0.5, 10.5);
 
   DomainHists truth_hists{&h_ratio_lab_truth,
                           &h_ratio_eta_lab_truth,
