@@ -1,4 +1,4 @@
-# centauro (new)
+# centauro
 
 This directory contains the C++ analysis pipeline used to compare anti-k_t and Centauro jets on EDM4eic/EDM4hep event data. The workflow is:
 
