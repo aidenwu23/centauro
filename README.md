@@ -24,23 +24,11 @@ This directory contains the C++ analysis pipeline used to compare anti-k_t and C
 
 ## Build
 
-From `new/`:
+Run:
 
 ```bash
 ./build.sh
 ```
-
-Useful options:
-
-- `./build.sh clean`: remove `build/` before configure/build.
-- `./build.sh fast`: skip configure, run build/install only.
-
-Useful environment variables:
-
-- `CENTAURO_BUILD_TYPE` (default `RelWithDebInfo`)
-- `CENTAURO_WITH_EDM` (default `ON`)
-- `CENTAURO_INSTALL_PREFIX` (default `build/install`)
-- `BUILD_NPROC` (parallel jobs)
 
 ## Run helper
 
@@ -62,52 +50,11 @@ Examples:
 - `programs/same_frame/match_jets.cc` -> `build/sf_match_jets`
 - `programs/diff_frame/match_jets.cc` -> `build/df_match_jets`
 
-## End-to-end workflow
+## Workflow
 
-Run commands from `new/`.
+### 1) Cluster jets
 
-### 1) Data prep
-
-Reduce one raw EDM4eic file:
-
-```bash
-./run.sh programs/data_prep/reducer.cc \
-  -i data/events/raw/events.root \
-  -o data/events/filtered/events_skim.root
-```
-
-Batch download + reduce:
-
-```bash
-python3 programs/data_prep/get_batch_reco.py -l 0 -u 9 -c 5
-```
-
-Batch DIS/Breit cuts:
-
-```bash
-python3 programs/data_prep/cut_batch.py -l 0 -u 9
-```
-
-Merge reduced files:
-
-```bash
-./run.sh programs/data_prep/merge_data.cc \
-  -o data/events/filtered/merged_pre.root \
-  -i "data/events/filtered/*_skim.root"
-```
-
-Apply event-level DIS cuts:
-
-```bash
-./run.sh programs/data_prep/cut_events.cc \
-  -i data/events/filtered/merged_pre.root \
-  -o data/events/filtered/merged.root \
-  --require-breit
-```
-
-### 2) Cluster jets
-
-Native-threshold output (used by same-frame matching):
+Native-threshold output (Lab particles and Breit particles receive the same numerical cuts, which are non-invariant):
 
 ```bash
 ./run.sh programs/cluster_jets.cc \
@@ -116,7 +63,7 @@ Native-threshold output (used by same-frame matching):
   --threshold-frame native
 ```
 
-Lab-threshold output (used by diff-frame matching):
+Lab-threshold output (Lab particles are used to build a set of skip indices, which is mapped to the Breit particles so Breit particles get lab frame cuts as well):
 
 ```bash
 ./run.sh programs/cluster_jets.cc \
@@ -127,14 +74,36 @@ Lab-threshold output (used by diff-frame matching):
 
 Defaults:
 
-- `-R 0.6`
-- `--max-eta 4`
-- `--min-jet-pT 5`
-- `--threshold-frame native`
+- Jet clustering radius: `-R 0.6`
+- Pseudorapidity:`--max-eta 4`
+- Minimum jet transverse momenta: `--min-jet-pT 5`
+- Frame in which the kinematic cuts above are applied: `--threshold-frame native`
 
-### 3A) Same-frame analysis
+### 2A) Different-frame analysis
 
-Match truth/reco per algorithm:
+Cross-frame matching (take a Centauro jet clustered in Breit frame, boost it back to lab frame, and match to the closets lab-clustered anti-kt jet):
+
+```bash
+./run.sh programs/diff_frame/match_jets.cc \
+  -j data/jets/raw/jets_lab.root \
+  -e data/events/filtered/merged.root \
+  -o data/jets/matched/diff_frame_matches.root \
+  --match-dR 0.3
+```
+
+Splitting and overlap metrics:
+
+```bash
+./run.sh programs/diff_frame/splitting.cc \
+  -m data/jets/matched/diff_frame_matches.root \
+  -j data/jets/raw/jets_lab.root \
+  -o data/graphs/diff_frame_splitting.root \
+  --max-dR 0.3
+```
+
+### 2A) Same-frame analysis
+
+Take jets clustered on truth particles and match to jets clustered on reco particles of the same frame ranked by transverse-momenta similarity.
 
 ```bash
 ./run.sh programs/same_frame/match_jets.cc \
@@ -162,40 +131,17 @@ Control plots:
   --abs-eta-max 3 --pT-min 5 --match-dR 0.2
 ```
 
-### 3B) Diff-frame analysis
-
-Cross-frame matching:
-
-```bash
-./run.sh programs/diff_frame/match_jets.cc \
-  -j data/jets/raw/jets_lab.root \
-  -e data/events/filtered/merged.root \
-  -o data/jets/matched/diff_frame_matches.root \
-  --match-dR 0.3
-```
-
-Splitting and overlap metrics:
-
-```bash
-./run.sh programs/diff_frame/splitting.cc \
-  -m data/jets/matched/diff_frame_matches.root \
-  -j data/jets/raw/jets_lab.root \
-  -o data/graphs/diff_frame_splitting.root \
-  --max-dR 0.3
-```
-
 ### 4) Additional plots
 
-Eta vs z maps:
+Eta vs z maps (see Centauro paper).
 
 ```bash
 ./run.sh programs/eta_vs_z.cc \
   -i data/jets/raw/jets_native.root \
-  -o data/graphs/eta_vs_z.root \
-  --min-jet-pT 2
+  -o data/graphs/eta_vs_z.root
 ```
 
-Overlay canvases:
+Overlay canvases (probably outdated):
 
 ```bash
 ./run.sh programs/overlay.cc \
@@ -210,7 +156,7 @@ Overlay canvases:
 
 ## Data contracts between stages
 
-`cluster_jets` writes these trees to `data/jets/raw/*.root`:
+`cluster_jets` writes these trees containing jet info to an output:
 
 - `LabFrameAntiktTruth`
 - `LabFrameCentauroTruth`
@@ -221,29 +167,16 @@ Overlay canvases:
 - `BreitFrameAntiktReco`
 - `BreitFrameCentauroReco`
 
+Each tree entry stores one clustered jet with branches for event and jet content (see bottom of jet_tools/include/types.h). Jet kinematics are taken from clustered FastJet jets, and constituent IDs come from PseudoJet::user_index(), which is set to the original input-particle index and used to map back to the source particle collection.
+
+`diff_frame/match_jets` writes:
+
+- `best_matches_truth` - Closest (Boosted Centauro, lab anti-kt) pair within dR.
+- `all_matches_truth`  - All lab anti-kt jets within dR of the boosted Centauro jet.
+- `best_matches_reco`  - Reconstructed version.
+- `all_matches_reco`   - Reconstructed version.
+
 `same_frame/match_jets` writes:
 
 - `antikt_matches` (`event`, `truth_index`, `reco_index`, `dR`)
 - `centauro_matches` (`event`, `truth_index`, `reco_index`, `dR`)
-
-`diff_frame/match_jets` writes:
-
-- `best_matches_truth`
-- `all_matches_truth`
-- `best_matches_reco`
-- `all_matches_reco`
-
-Main analysis outputs:
-
-- `performance.root`: `summary`, `hists/`, `raw/`
-- `controls.root`: `summary`, `hist/`, `antikt/`, `centauro/`
-- `diff_frame_splitting.root`: `ratio/`, `eta_lab/`, `eta_breit/`, `nconst/`, `match/`, `shared_over_centauro/`
-- `eta_vs_z.root`: `centauro/`, `antikt/`
-
-## Pulling numeric summaries
-
-Use:
-
-```bash
-python3 tools/read_outputs.py
-```
