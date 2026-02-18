@@ -106,13 +106,13 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
   }
 
   // Only read constituent vectors when both paired branches are present.
-  const bool have_constituents = has_branch(tree, "constituents");
+  const bool have_constituent_indices = has_branch(tree, "constituent_indices");
   const bool have_constituent_E = has_branch(tree, "constituent_E");
-  const bool have_constituent_vectors = have_constituents && have_constituent_E;
+  const bool have_constituent_vectors = have_constituent_indices && have_constituent_E;
 
   if (options.require_constituent_vectors && !have_constituent_vectors) {
-    if (!have_constituents) {
-      fail_missing_branch(tree, "constituents", tag);
+    if (!have_constituent_indices) {
+      fail_missing_branch(tree, "constituent_indices", tag);
     }
     fail_missing_branch(tree, "constituent_E", tag);
   }
@@ -126,7 +126,7 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
   double eta = std::numeric_limits<double>::quiet_NaN();
   double phi = std::numeric_limits<double>::quiet_NaN();
   int n_constituents = -1;
-  std::vector<int>* constituents = nullptr;
+  std::vector<int>* constituent_indices = nullptr;
   std::vector<double>* constituent_E = nullptr;
 
   tree.SetBranchAddress("event_id", &event_id);
@@ -149,7 +149,7 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
   }
 
   if (have_constituent_vectors) {
-    tree.SetBranchAddress("constituents", &constituents);
+    tree.SetBranchAddress("constituent_indices", &constituent_indices);
     tree.SetBranchAddress("constituent_E", &constituent_E);
   }
 
@@ -199,8 +199,8 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
     }
 
     if (have_constituent_vectors) {
-      if (constituents != nullptr) {
-        jet.constituents = *constituents;
+      if (constituent_indices != nullptr) {
+        jet.constituent_indices = *constituent_indices;
       }
       if (constituent_E != nullptr) {
         jet.constituent_E = *constituent_E;

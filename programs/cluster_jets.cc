@@ -364,7 +364,7 @@ void attach_z_inv(std::vector<jet_tools::SimpleJet> &jets, JetFrame jet_frame,
   (void)jet_frame;
   for (auto &jet : jets) {
     jet.z_inv = std::numeric_limits<double>::quiet_NaN();
-    if (!kin.valid || !lab_particles || jet.constituents.empty()) {
+    if (!kin.valid || !lab_particles || jet.constituent_indices.empty()) {
       continue;
     }
 
@@ -373,7 +373,7 @@ void attach_z_inv(std::vector<jet_tools::SimpleJet> &jets, JetFrame jet_frame,
     double sum_py = 0.0;
     double sum_pz = 0.0;
     bool have_constituent = false;
-    for (int index : jet.constituents) {
+    for (int index : jet.constituent_indices) {
       if (index < 0) {
         continue;
       }
@@ -423,10 +423,7 @@ struct JetTreeWriter {
     tree.Branch("z_inv", &z_inv);
     tree.Branch("n_constituents", &n_constituents);
     tree.Branch("n_reco_constituents", &n_reco_constituents);
-    tree.Branch("constituents", &constituents);
-    tree.Branch("constituent_px", &constituent_px);
-    tree.Branch("constituent_py", &constituent_py);
-    tree.Branch("constituent_pz", &constituent_pz);
+    tree.Branch("constituent_indices", &constituent_indices);
     tree.Branch("constituent_E", &constituent_E);
   }
 
@@ -443,10 +440,7 @@ struct JetTreeWriter {
     z_inv = jet.z_inv;
     n_constituents = static_cast<int>(jet.n_constituents);
     n_reco_constituents = static_cast<int>(jet.n_reco_constituents);
-    constituents = jet.constituents;
-    constituent_px = jet.constituent_px;
-    constituent_py = jet.constituent_py;
-    constituent_pz = jet.constituent_pz;
+    constituent_indices = jet.constituent_indices;
     constituent_E = jet.constituent_E;
     tree.Fill();
   }
@@ -471,10 +465,7 @@ struct JetTreeWriter {
   double z_inv = std::numeric_limits<double>::quiet_NaN();
   int n_constituents = 0;
   int n_reco_constituents = 0;
-  std::vector<int> constituents;
-  std::vector<double> constituent_px;
-  std::vector<double> constituent_py;
-  std::vector<double> constituent_pz;
+  std::vector<int> constituent_indices;
   std::vector<double> constituent_E;
 };
 

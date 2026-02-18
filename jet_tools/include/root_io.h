@@ -50,7 +50,7 @@ struct JetTreeReadOptions {
   bool require_four_momentum = false;
   // Require n_constituents.
   bool require_n_constituents = false;
-  // Require both constituents and constituent_E vectors.
+  // Require both constituent_indices and constituent_E vectors.
   bool require_constituent_vectors = false;
 };
 
@@ -60,8 +60,7 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
                    const JetTreeReadOptions& options = JetTreeReadOptions{});
 
 // Read same-frame match rows (event, truth_index, reco_index, dR).
-std::vector<TruthRecoMatchRow> read_match_tree(TTree& tree, std::size_t max_events,
-                                               const std::string& tag);
+std::vector<TruthRecoMatchRow> read_match_tree(TTree& tree, std::size_t max_events, const std::string& tag);
 
 // Define same-frame match tree branches.
 void setup_truth_reco_match_tree(TTree& tree, TruthRecoMatchRow& row);

@@ -24,9 +24,6 @@ jet_tools::SimpleJet fill_one_simplejet(
       jet.phi_std(),
       {},
       {},
-      {},
-      {},
-      {},
       0,
       0,
       std::numeric_limits<double>::quiet_NaN()};
@@ -35,35 +32,21 @@ jet_tools::SimpleJet fill_one_simplejet(
   simple_jet.n_reco_constituents = constituents.size();
   simple_jet.n_constituents = simple_jet.n_reco_constituents;
 
-  simple_jet.constituents.reserve(constituents.size());
-  simple_jet.constituent_px.reserve(constituents.size());
-  simple_jet.constituent_py.reserve(constituents.size());
-  simple_jet.constituent_pz.reserve(constituents.size());
+  simple_jet.constituent_indices.reserve(constituents.size());
   simple_jet.constituent_E.reserve(constituents.size());
 
   for (const auto &constituent : constituents) {
     const int user_index = constituent.user_index();
-    double px = constituent.px();
-    double py = constituent.py();
-    double pz = constituent.pz();
     double energy = constituent.E();
-    if (particles && user_index >= 0 &&
-        static_cast<std::size_t>(user_index) < particles->size()) {
+    if (particles && user_index >= 0 && static_cast<std::size_t>(user_index) < particles->size()) {
       const auto &particle = particles->at(static_cast<std::size_t>(user_index));
-      const auto mom = particle.getMomentum();
-      px = mom.x;
-      py = mom.y;
-      pz = mom.z;
       energy = particle.getEnergy();
     }
     if (!std::isfinite(energy) || energy <= 0.0) {
       continue;
     }
 
-    simple_jet.constituents.push_back(user_index);
-    simple_jet.constituent_px.push_back(px);
-    simple_jet.constituent_py.push_back(py);
-    simple_jet.constituent_pz.push_back(pz);
+    simple_jet.constituent_indices.push_back(user_index);
     simple_jet.constituent_E.push_back(energy);
   }
   return simple_jet;

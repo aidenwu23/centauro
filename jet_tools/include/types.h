@@ -79,10 +79,7 @@ struct SimpleJet {
   double E = 0.0;
   double eta = 0.0;
   double phi = 0.0;
-  std::vector<int> constituents;
-  std::vector<double> constituent_px;
-  std::vector<double> constituent_py;
-  std::vector<double> constituent_pz;
+  std::vector<int> constituent_indices;
   std::vector<double> constituent_E;
   std::size_t n_constituents = 0;
   std::size_t n_reco_constituents = 0;

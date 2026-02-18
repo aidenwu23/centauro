@@ -122,8 +122,8 @@ struct SoCResult {
 SoCResult compute_soc(const jet_tools::SimpleJet& centauro,
                       const jet_tools::SimpleJet& antikt) {
   SoCResult out;
-  const std::size_t centauro_size = std::min(centauro.constituents.size(), centauro.constituent_E.size());
-  const std::size_t antikt_size = std::min(antikt.constituents.size(), antikt.constituent_E.size());
+  const std::size_t centauro_size = std::min(centauro.constituent_indices.size(), centauro.constituent_E.size());
+  const std::size_t antikt_size = std::min(antikt.constituent_indices.size(), antikt.constituent_E.size());
 
   if (centauro_size == 0 || antikt_size == 0) {
     return out;
@@ -136,7 +136,7 @@ SoCResult compute_soc(const jet_tools::SimpleJet& centauro,
 
   // Compute count and energy overlap with direct constituent ID matching.
   for (std::size_t ci = 0; ci < centauro_size; ++ci) {
-    const int centauro_id = centauro.constituents[ci];
+    const int centauro_id = centauro.constituent_indices[ci];
     const double centauro_E = centauro.constituent_E[ci];
 
     if (!std::isfinite(centauro_E) || centauro_E <= 0.0) {
@@ -149,7 +149,7 @@ SoCResult compute_soc(const jet_tools::SimpleJet& centauro,
 
     // If constituent IDs match, increment numerator (shared).
     for (std::size_t ai = 0; ai < antikt_size; ++ai) {
-      const int antikt_id = antikt.constituents[ai];
+      const int antikt_id = antikt.constituent_indices[ai];
       if (centauro_id != antikt_id) {
         continue;
       }
