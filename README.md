@@ -2,10 +2,10 @@
 
 This directory contains the C++ analysis pipeline used to compare anti-k_t and Centauro jets on EDM4eic/EDM4hep event data. The workflow is:
 
-1. Prepare events.
-2. Cluster jets.
-3. Match jets.
-4. Produce analysis ROOT outputs and overlays.
+(0. Prepare events.)
+1. Cluster jets.
+2. Match jets.
+3. Produce analysis ROOT outputs and overlays.
 
 ## Directory layout
 
