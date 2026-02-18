@@ -17,14 +17,6 @@ shift || true
 resolve_exec() {
   local target="$1"
 
-  # Special-case cross-frame splitting (name collision with scripts/splitting.cc)
-  if [[ "$target" == */scripts/cross_frame/splitting.cc || "$target" == "scripts/cross_frame/splitting.cc" || "$target" == "cross_frame/splitting.cc" ]]; then
-    local candidate="$BUILD_DIR/cf_splitting"
-    if [[ -x "$candidate" ]]; then
-      echo "$candidate"; return 0
-    fi
-  fi
-
   # Special-case same-frame matcher since executable name differs from source basename.
   if [[ "$target" == */programs/same_frame/match_jets.cc || "$target" == "programs/same_frame/match_jets.cc" || "$target" == "same_frame/match_jets.cc" ]]; then
     local candidate="$BUILD_DIR/sf_match_jets"

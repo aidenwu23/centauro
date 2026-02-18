@@ -16,6 +16,7 @@ Run:
 #include <TStyle.h>
 #include <TTree.h>
 
+#include "jet_tools/include/math_helpers.h"
 #include "jet_tools/include/plot_helpers.h"
 #include "jet_tools/include/event_progress.h"
 #include "jet_tools/include/root_io.h"
@@ -113,71 +114,10 @@ Args parse_args(int argc, char* argv[]) {
 }
 
 //=====================================================================================================
-// Math And Utility Helpers.
-//=====================================================================================================
-double delta_phi(double phi1, double phi2) {
-  constexpr double pi = 3.14159265358979323846;
-  if (!std::isfinite(phi1) || !std::isfinite(phi2)) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  double dphi = phi1 - phi2;
-  while (dphi > pi) {
-    dphi -= 2.0 * pi;
-  }
-  while (dphi <= -pi) {
-    dphi += 2.0 * pi;
-  }
-  return dphi;
-}
-
-std::vector<double> finite_copy(const std::vector<double>& values) {
-  std::vector<double> out;
-  out.reserve(values.size());
-  for (const double value : values) {
-    if (std::isfinite(value)) {
-      out.push_back(value);
-    }
-  }
-  return out;
-}
-
-double mean_finite(const std::vector<double>& values) {
-  const std::vector<double> finite = finite_copy(values);
-  if (finite.empty()) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  double sum = 0.0;
-  for (const double value : finite) {
-    sum += value;
-  }
-  return sum / static_cast<double>(finite.size());
-}
-
-//=====================================================================================================
 // Statistical Helpers.
 //=====================================================================================================
-double quantile_sorted(const std::vector<double>& sorted_values, double q) {
-  if (sorted_values.empty()) {
-    return std::numeric_limits<double>::quiet_NaN();
-  }
-  if (q <= 0.0) {
-    return sorted_values.front();
-  }
-  if (q >= 1.0) {
-    return sorted_values.back();
-  }
-  const double pos = q * static_cast<double>(sorted_values.size() - 1U);
-  const std::size_t lo = static_cast<std::size_t>(std::floor(pos));
-  const std::size_t hi = static_cast<std::size_t>(std::ceil(pos));
-  if (lo == hi) {
-    return sorted_values[lo];
-  }
-  const double frac = pos - static_cast<double>(lo);
-  return (1.0 - frac) * sorted_values[lo] + frac * sorted_values[hi];
-}
-
 double effSigma68(std::vector<double> values) {
-  values = finite_copy(values);
+  values = jet_tools::finite_values(values);
   if (values.size() < 2U) {
     return std::numeric_limits<double>::quiet_NaN();
   }
@@ -302,7 +242,7 @@ void collect_alg_data(const std::string& label, const EventJets& truth_jets,
       continue;
     }
 
-    const double dphi = delta_phi(reco.phi, truth.phi);
+    const double dphi = jet_tools::delta_phi(reco.phi, truth.phi);
     const double deta = reco.eta - truth.eta;
     double pair_dR = match.dR;
     if (!std::isfinite(pair_dR) && std::isfinite(dphi) && std::isfinite(deta)) {
@@ -527,15 +467,14 @@ void write_outputs(const Args& args, const AlgData (&data)[2], TFile& fout,
     for (std::size_t bin = 0; bin + 1U < pT_edges.size(); ++bin) {
       const int root_bin = static_cast<int>(bin + 1U);
 
-      const double mean_rel = mean_finite(rel_resid_bins[bin]);
+      const double mean_rel = jet_tools::mean_value(jet_tools::finite_values(rel_resid_bins[bin]));
       hrel_resid_bias[alg]->SetBinContent(root_bin, std::isfinite(mean_rel) ? mean_rel : 0.0);
-      hrel_resid_bias[alg]->SetBinError(
-          root_bin,
+      hrel_resid_bias[alg]->SetBinError(root_bin,
           jet_tools::bootstrap_mean_err(rel_resid_bins[bin], seed + static_cast<std::uint32_t>(bin)));
 
       double eff_rel = 0.0;
       double eff_rel_err = 0.0;
-      if (finite_copy(rel_resid_bins[bin]).size() >= 2U) {
+      if (jet_tools::finite_values(rel_resid_bins[bin]).size() >= 2U) {
         eff_rel = effSigma68(rel_resid_bins[bin]);
         eff_rel_err = effSigma68_err_bootstrap(
             rel_resid_bins[bin], seed + static_cast<std::uint32_t>(bin));
@@ -543,19 +482,19 @@ void write_outputs(const Args& args, const AlgData (&data)[2], TFile& fout,
       hrel_resid_effsigma68[alg]->SetBinContent(root_bin, std::isfinite(eff_rel) ? eff_rel : 0.0);
       hrel_resid_effsigma68[alg]->SetBinError(root_bin, eff_rel_err);
 
-      const double mean_resp = mean_finite(resp_raw_bins[bin]);
+      const double mean_resp = jet_tools::mean_value(jet_tools::finite_values(resp_raw_bins[bin]));
       hresp_mean_raw_pT[alg]->SetBinContent(root_bin, std::isfinite(mean_resp) ? mean_resp : 0.0);
       hresp_mean_raw_pT[alg]->SetBinError(root_bin, jet_tools::bootstrap_mean_err(resp_raw_bins[bin], 
           seed + static_cast<std::uint32_t>(bin + 5000U)));
 
-      const double mean_dphi = mean_finite(dphi_bins[bin]);
+      const double mean_dphi = jet_tools::mean_value(jet_tools::finite_values(dphi_bins[bin]));
       hdphi_bias[alg]->SetBinContent(root_bin, std::isfinite(mean_dphi) ? mean_dphi : 0.0);
       hdphi_bias[alg]->SetBinError(root_bin, jet_tools::bootstrap_mean_err(dphi_bins[bin], 
           seed + static_cast<std::uint32_t>(bin + 10000U)));
 
       double eff_dphi = 0.0;
       double eff_dphi_err = 0.0;
-      if (finite_copy(dphi_bins[bin]).size() >= 2U) {
+      if (jet_tools::finite_values(dphi_bins[bin]).size() >= 2U) {
         eff_dphi = effSigma68(dphi_bins[bin]);
         eff_dphi_err = effSigma68_err_bootstrap(
             dphi_bins[bin], seed + static_cast<std::uint32_t>(bin + 1000U));
@@ -563,14 +502,14 @@ void write_outputs(const Args& args, const AlgData (&data)[2], TFile& fout,
       hdphi_effsigma68[alg]->SetBinContent(root_bin, std::isfinite(eff_dphi) ? eff_dphi : 0.0);
       hdphi_effsigma68[alg]->SetBinError(root_bin, eff_dphi_err);
 
-      const double mean_deta = mean_finite(deta_bins[bin]);
+      const double mean_deta = jet_tools::mean_value(jet_tools::finite_values(deta_bins[bin]));
       hdeta_bias[alg]->SetBinContent(root_bin, std::isfinite(mean_deta) ? mean_deta : 0.0);
       hdeta_bias[alg]->SetBinError( root_bin,
           jet_tools::bootstrap_mean_err(deta_bins[bin], seed + static_cast<std::uint32_t>(bin + 20000U)));
 
       double eff_deta = 0.0;
       double eff_deta_err = 0.0;
-      if (finite_copy(deta_bins[bin]).size() >= 2U) {
+      if (jet_tools::finite_values(deta_bins[bin]).size() >= 2U) {
         eff_deta = effSigma68(deta_bins[bin]);
         eff_deta_err = effSigma68_err_bootstrap(
             deta_bins[bin], seed + static_cast<std::uint32_t>(bin + 2000U));
@@ -580,10 +519,9 @@ void write_outputs(const Args& args, const AlgData (&data)[2], TFile& fout,
 
       double med_dR = 0.0;
       if (!dR_bins[bin].empty()) {
-        auto sorted = finite_copy(dR_bins[bin]);
-        if (!sorted.empty()) {
-          std::sort(sorted.begin(), sorted.end());
-          med_dR = quantile_sorted(sorted, 0.5);
+        const auto finite_dR = jet_tools::finite_values(dR_bins[bin]);
+        if (!finite_dR.empty()) {
+          med_dR = jet_tools::quantile_value(finite_dR, 0.5);
         }
       }
       hdR_median[alg]->SetBinContent(root_bin, std::isfinite(med_dR) ? med_dR : 0.0);
@@ -605,7 +543,7 @@ void write_outputs(const Args& args, const AlgData (&data)[2], TFile& fout,
   summary.Branch("effSigma68_rel_resid", &s_effsigma68_rel_resid);
   for (int alg = 0; alg < 2; ++alg) {
     s_alg = alg;
-    s_mean_resp_raw = mean_finite(data[alg].resp_raw);
+    s_mean_resp_raw = jet_tools::mean_value(jet_tools::finite_values(data[alg].resp_raw));
     s_effsigma68_rel_resid = effSigma68(data[alg].rel_resid);
     summary.Fill();
   }

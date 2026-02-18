@@ -660,7 +660,7 @@ int main(int argc, char *argv[]) {
         reco_source_particles = reco_lab_particles;
 
         // Use scattered electron indices as the base list, and then append additional indices later on.
-        // (mostly particles that fail the pT, eta, and neutrino cuts)
+        // (mostly particles that fail the configured pT, eta, and neutrino cuts).
         truth_electron_skip = &skip_truth_lab;
         reco_electron_skip = &skip_reco_lab;
       } else {

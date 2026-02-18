@@ -1,6 +1,6 @@
 # centauro
 
-This directory contains the C++ analysis pipeline used to compare anti-k_t and Centauro jets on EDM4eic/EDM4hep event data. The workflow is:
+Very broadly, the workflow is:
 
 (0. Prepare events.)
 1. Cluster jets.
@@ -13,42 +13,9 @@ This directory contains the C++ analysis pipeline used to compare anti-k_t and C
 - `run.sh`: run a built executable by source path or binary path.
 - `CMakeLists.txt`: top-level build configuration.
 - `programs/`: executable entry points.
-- `jet_tools/`: shared helpers used by `programs/`.
-- `tools/read_outputs.py`: pull summary numbers from ROOT outputs, probably outdated.
+- `jet_tools/`: shared helpers used by `programs/`. Most of the jet clustering logic and particle filtering logic occur here.
+- `tools/read_outputs.py`: pull summary numbers from ROOT outputs, need to be updated.
 - `data/`: generated inputs/outputs.
-  - `data/events/raw`
-  - `data/events/filtered`
-  - `data/jets/raw`
-  - `data/jets/matched`
-  - `data/graphs`
-
-## Build
-
-Run:
-
-```bash
-./build.sh
-```
-
-## Run helper
-
-Use:
-
-```bash
-./run.sh <path-to-source-or-binary> [program args...]
-```
-
-Examples:
-
-```bash
-./run.sh programs/cluster_jets.cc -h
-./run.sh build/cluster_jets -h
-```
-
-`run.sh` resolves source paths whose executable names differ from file basenames, including:
-
-- `programs/same_frame/match_jets.cc` -> `build/sf_match_jets`
-- `programs/diff_frame/match_jets.cc` -> `build/df_match_jets`
 
 ## Workflow
 
@@ -58,7 +25,7 @@ Native-threshold output (Lab particles and Breit particles receive the same nume
 
 ```bash
 ./run.sh programs/cluster_jets.cc \
-  -i data/events/filtered/merged.root \
+  -i data/events/filtered/events.root \
   -o data/jets/raw/jets_native.root \
   --threshold-frame native
 ```
@@ -67,7 +34,7 @@ Lab-threshold output (Lab particles are used to build a set of skip indices, whi
 
 ```bash
 ./run.sh programs/cluster_jets.cc \
-  -i data/events/filtered/merged.root \
+  -i data/events/filtered/events.root \
   -o data/jets/raw/jets_lab.root \
   --threshold-frame lab
 ```
@@ -86,7 +53,7 @@ Cross-frame matching (take a Centauro jet clustered in Breit frame, boost it bac
 ```bash
 ./run.sh programs/diff_frame/match_jets.cc \
   -j data/jets/raw/jets_lab.root \
-  -e data/events/filtered/merged.root \
+  -e data/events/filtered/events.root \
   -o data/jets/matched/diff_frame_matches.root \
   --match-dR 0.3
 ```
@@ -180,3 +147,31 @@ Each tree entry stores one clustered jet with branches for event and jet content
 
 - `antikt_matches` (`event`, `truth_index`, `reco_index`, `dR`)
 - `centauro_matches` (`event`, `truth_index`, `reco_index`, `dR`)
+
+## Build
+
+Run:
+
+```bash
+./build.sh
+```
+
+## Run helper
+
+Use:
+
+```bash
+./run.sh <path-to-source-or-binary> [program args...]
+```
+
+Examples:
+
+```bash
+./run.sh programs/cluster_jets.cc -h
+./run.sh build/cluster_jets -h
+```
+
+`run.sh` resolves source paths whose executable names differ from file basenames, including:
+
+- `programs/same_frame/match_jets.cc` -> `build/sf_match_jets`
+- `programs/diff_frame/match_jets.cc` -> `build/df_match_jets`
