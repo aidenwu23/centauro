@@ -100,6 +100,9 @@ struct Args {
   ThresholdFrame threshold_frame = ThresholdFrame::Native;
 };
 
+//=========================================================================================
+// CLI helpers
+//=========================================================================================
 void usage(const char *argv0) {
   std::cerr << "Usage: " << argv0
             << " -i INPUT.root -o OUTPUT.root [--max-events N] [-R VAL]\n"
