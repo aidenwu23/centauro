@@ -19,3 +19,5 @@ CMakeCache.txt
 .vscode/
 .idea/
 *.swp
+
+.gitignore
