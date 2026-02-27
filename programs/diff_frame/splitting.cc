@@ -42,19 +42,6 @@ struct Args {
   double max_dR = std::numeric_limits<double>::infinity();
 };
 
-struct BestMatchRow {
-  ULong64_t event = 0;
-  int centauro_index = -1;
-  int antikt_index = -1;
-  double dR = std::numeric_limits<double>::quiet_NaN();
-};
-
-struct AllMatchRow {
-  ULong64_t event = 0;
-  int centauro_index = -1;
-  std::vector<int>* antikt_indices = nullptr;
-};
-
 using EventJets = jet_tools::EventJets;
 
 void usage(const char* argv0) {
@@ -174,35 +161,19 @@ SoCResult compute_soc(const jet_tools::SimpleJet& centauro,
   return out;
 }
 
-void process_best_matches(TTree& tree, const EventJets& centauro_jets,
-                          const EventJets& antikt_jets, std::size_t max_events,
-                          double max_dR, DomainHists& h) {
-  BestMatchRow row;
-  if (!tree.GetBranch("event") || !tree.GetBranch("centauro_index") ||
-      !tree.GetBranch("antikt_index") || !tree.GetBranch("dR")) {
-    std::cerr << "[splitting_cf] tree '" << tree.GetName() << "' missing required branches\n";
-    std::exit(1);
-  }
-
-  tree.SetBranchAddress("event", &row.event);
-  tree.SetBranchAddress("centauro_index", &row.centauro_index);
-  tree.SetBranchAddress("antikt_index", &row.antikt_index);
-  tree.SetBranchAddress("dR", &row.dR);
-
-  const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
-  jet_tools::EventLimitGate event_gate(max_events);
+void process_best_matches(const std::vector<jet_tools::CrossFrameBestMatchRow>& rows,
+                          const char* tree_name, const EventJets& centauro_jets,
+                          const EventJets& antikt_jets, double max_dR,
+                          DomainHists& h) {
+  const std::size_t entries = rows.size();
   jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < entries; ++i) {
     if (progress.should_report(i)) {
-      const std::string message = std::string("[splitting_cf] best ") + tree.GetName() + " " + 
+      const std::string message = std::string("[splitting_cf] best ") + tree_name + " " +
                                   std::to_string(i) + "/" + std::to_string(entries);
       progress.report(message);
     }
-    tree.GetEntry(static_cast<Long64_t>(i));
-
-    if (!event_gate.allow(row.event)) {
-      continue;
-    }
+    const auto& row = rows[i];
     if (!std::isfinite(row.dR)) {
       continue;
     }
@@ -262,47 +233,32 @@ void process_best_matches(TTree& tree, const EventJets& centauro_jets,
       h.h_soc_energy->Fill(soc.soc_energy);
     }
   }
-  progress.finish(std::string("[splitting_cf] best ") + tree.GetName() + " " +
-                  std::to_string(entries) + "/" + std::to_string(entries));
+  progress.finish(std::string("[splitting_cf] best ") + tree_name + " " + std::to_string(entries) + 
+      "/" + std::to_string(entries));
 }
 
 // TODO: expand process_all_matches to not only deal with multiplicity.
-void process_all_matches(TTree& tree, std::size_t max_events, DomainHists& h) {
-  AllMatchRow row;
-  if (!tree.GetBranch("event") || !tree.GetBranch("centauro_index") ||
-      !tree.GetBranch("antikt_indices")) {
-    std::cerr << "[splitting_cf] tree '" << tree.GetName() << "' missing required branches\n";
-    std::exit(1);
-  }
-
-  tree.SetBranchAddress("event", &row.event);
-  tree.SetBranchAddress("centauro_index", &row.centauro_index);
-  tree.SetBranchAddress("antikt_indices", &row.antikt_indices);
-
-  const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
-  jet_tools::EventLimitGate event_gate(max_events);
+void process_all_matches(const std::vector<jet_tools::CrossFrameAllMatchRow>& rows,
+                         const char* tree_name, DomainHists& h) {
+  const std::size_t entries = rows.size();
   jet_tools::ProgressTicker progress;
   for (std::size_t i = 0; i < entries; ++i) {
     if (progress.should_report(i)) {
       const std::string message = std::string("[splitting_cf] all ") +
-                                  tree.GetName() + " " + std::to_string(i) +
+                                  tree_name + " " + std::to_string(i) +
                                   "/" + std::to_string(entries);
       progress.report(message);
     }
-    tree.GetEntry(static_cast<Long64_t>(i));
-
-    if (!event_gate.allow(row.event)) {
-      continue;
-    }
-    if (row.centauro_index < 0 || row.antikt_indices == nullptr) {
+    const auto& row = rows[i];
+    if (row.centauro_index < 0) {
       continue;
     }
 
-    const std::size_t multiplicity = row.antikt_indices->size();
+    const std::size_t multiplicity = row.antikt_indices.size();
     h.h_centauro_match_multiplicity->Fill(static_cast<double>(multiplicity));
   }
-  progress.finish(std::string("[splitting_cf] all ") + tree.GetName() + " " +
-                  std::to_string(entries) + "/" + std::to_string(entries));
+  progress.finish(std::string("[splitting_cf] all ") + tree_name + " " + std::to_string(entries) + 
+      "/" + std::to_string(entries));
 }
 
 }  // namespace
@@ -335,6 +291,11 @@ int main(int argc, char* argv[]) {
   auto* t_antikt_truth = jet_tools::get_required_tree(f_jets, "LabFrameAntiktTruth", "splitting_cf");
   auto* t_centauro_reco = jet_tools::get_required_tree(f_jets, "BreitFrameCentauroReco", "splitting_cf");
   auto* t_antikt_reco = jet_tools::get_required_tree(f_jets, "LabFrameAntiktReco", "splitting_cf");
+
+  const auto best_truth_rows = jet_tools::read_cf_best_match_tree(*t_best_truth, args.max_events, "splitting_cf");
+  const auto all_truth_rows = jet_tools::read_cf_all_match_tree(*t_all_truth, args.max_events, "splitting_cf");
+  const auto best_reco_rows = jet_tools::read_cf_best_match_tree(*t_best_reco, args.max_events, "splitting_cf");
+  const auto all_reco_rows = jet_tools::read_cf_all_match_tree(*t_all_reco, args.max_events, "splitting_cf");
 
   EventJets centauro_truth;
   EventJets antikt_truth;
@@ -418,12 +379,12 @@ int main(int argc, char* argv[]) {
                          &h_soc_energy_reco,
                          &h_centauro_mult_reco};
 
-  process_best_matches(*t_best_truth, centauro_truth, antikt_truth, args.max_events,
+  process_best_matches(best_truth_rows, t_best_truth->GetName(), centauro_truth, antikt_truth,
                        args.max_dR, truth_hists);
-  process_best_matches(*t_best_reco, centauro_reco, antikt_reco, args.max_events,
+  process_best_matches(best_reco_rows, t_best_reco->GetName(), centauro_reco, antikt_reco,
                        args.max_dR, reco_hists);
-  process_all_matches(*t_all_truth, args.max_events, truth_hists);
-  process_all_matches(*t_all_reco, args.max_events, reco_hists);
+  process_all_matches(all_truth_rows, t_all_truth->GetName(), truth_hists);
+  process_all_matches(all_reco_rows, t_all_reco->GetName(), reco_hists);
 
   auto write_in_dir = [&](TDirectory* dir) {
     if (dir) {

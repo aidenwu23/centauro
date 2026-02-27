@@ -1136,9 +1136,9 @@ int main(int argc, char* argv[]) {
   jet_tools::read_jet_tree(*t_centauro_reco, args.max_events, centauro_reco, "controls", jet_read_options);
 
   const std::vector<jet_tools::TruthRecoMatchRow> antikt_matches =
-      jet_tools::read_match_tree(*t_antikt_matches, args.max_events, "controls");
+      jet_tools::read_sf_match_tree(*t_antikt_matches, args.max_events, "controls");
   const std::vector<jet_tools::TruthRecoMatchRow> centauro_matches =
-      jet_tools::read_match_tree(*t_centauro_matches, args.max_events, "controls");
+      jet_tools::read_sf_match_tree(*t_centauro_matches, args.max_events, "controls");
 
   const std::vector<double> pT_edges = build_pT_edges(args.min_pT);
   const double max_eta_eff = std::isfinite(args.max_eta) ? args.max_eta : 3.0;

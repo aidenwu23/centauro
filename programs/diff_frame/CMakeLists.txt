@@ -44,8 +44,31 @@ target_link_libraries(
     ROOT::Gpad
     ROOT::Graf)
 
+add_executable(eta_phi eta_phi.cc)
+target_compile_features(eta_phi PRIVATE cxx_std_17)
+target_sources(
+  eta_phi
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}/jet_tools/src/root_io.cc)
+target_include_directories(eta_phi PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries(
+  eta_phi
+  PRIVATE
+    podio::podio
+    podio::podioRootIO
+    EDM4EIC::edm4eic
+    ROOT::Core
+    ROOT::RIO
+    ROOT::MathCore
+    ROOT::GenVector
+    ROOT::Tree
+    ROOT::Hist
+    ROOT::Gpad
+    ROOT::Graf)
+
 install(
   TARGETS
     df_match_jets
     splitting
+    eta_phi
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

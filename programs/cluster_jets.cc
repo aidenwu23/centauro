@@ -3,20 +3,20 @@ Example:
 Runs clustering with jet radius = 0.6, eta < 4, and jet cuts applied in whatever frame the input
 collection is. 
 
+To generate jets for diff_frame analysis.
 ./run.sh programs/cluster_jets.cc \
   -i data/events/filtered/merged_0-999.root \
   -o data/jets/raw/jets_0-999_lab_cuts.root --threshold-frame lab
 
+To generate jets for same_frame analysis.
 ./run.sh programs/cluster_jets.cc \
   -i data/events/filtered/merged_0-999.root \
   -o data/jets/raw/jets_0-999_native_cuts.root --threshold-frame native \
 
-Runs clustering with jet radius = 0.6, Breit eta < 4, breit pT > 5, and jet cuts applied in whatever 
-frame the input collection is. 
-
+To generate jets for the eta_vs_z plot.
 ./run.sh programs/cluster_jets.cc \
   -i data/events/filtered/merged_0-999.root \
-  -o data/jets/raw/jets_0-999_lab_cuts.root \
+  -o data/jets/raw/eta_vs_z_jets.root \
   --threshold-frame lab \
   --min-jet-pT 0 --max-eta 6 --min-cst-pT 0.2 --max-cst-eta 4 
 */

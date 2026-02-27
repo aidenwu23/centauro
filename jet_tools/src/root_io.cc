@@ -41,6 +41,46 @@ std::string make_read_message(const std::string& tag, const char* tree_name,
          std::to_string(index) + "/" + std::to_string(total);
 }
 
+template <class Row>
+// Read a (Centauro, antikt) pair.
+void read_scalar_pair_match_rows(TTree& tree, std::size_t max_events,
+                                 const std::string& tag,
+                                 const char* first_index_branch,
+                                 int Row::*first_index_member,
+                                 const char* second_index_branch,
+                                 int Row::*second_index_member,
+                                 std::vector<Row>& rows) {
+  require_branch(tree, "event", tag);
+  require_branch(tree, first_index_branch, tag);
+  require_branch(tree, second_index_branch, tag);
+  require_branch(tree, "dR", tag);
+
+  Row row;
+  tree.SetBranchAddress("event", &row.event);
+  tree.SetBranchAddress(first_index_branch, &(row.*first_index_member));
+  tree.SetBranchAddress(second_index_branch, &(row.*second_index_member));
+  tree.SetBranchAddress("dR", &row.dR);
+
+  rows.clear();
+  const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
+  rows.reserve(entries);
+
+  EventLimitGate event_gate(max_events);
+  ProgressTicker progress;
+  for (std::size_t i = 0; i < entries; ++i) {
+    if (progress.should_report(i)) {
+      progress.report(make_read_message(tag, tree.GetName(), i, entries));
+    }
+    tree.GetEntry(static_cast<Long64_t>(i));
+    if (!event_gate.allow(row.event)) {
+      continue;
+    }
+    rows.push_back(row);
+  }
+
+  progress.finish(make_read_message(tag, tree.GetName(), entries, entries));
+}
+
 }  // namespace
 
 void ensure_parent(const std::string& path) {
@@ -213,21 +253,64 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
   progress.finish(make_read_message(tag, tree.GetName(), entries, entries));
 }
 
-// Shared reader for same-frame match trees.
-std::vector<TruthRecoMatchRow> read_match_tree(TTree& tree, std::size_t max_events,
-                                               const std::string& tag) {
-  require_branch(tree, "event", tag);
-  require_branch(tree, "truth_index", tag);
-  require_branch(tree, "reco_index", tag);
-  require_branch(tree, "dR", tag);
-
-  TruthRecoMatchRow row;
-  tree.SetBranchAddress("event", &row.event);
-  tree.SetBranchAddress("truth_index", &row.truth_index);
-  tree.SetBranchAddress("reco_index", &row.reco_index);
-  tree.SetBranchAddress("dR", &row.dR);
-
+std::vector<TruthRecoMatchRow> read_sf_match_tree(TTree& tree, std::size_t max_events,
+                                                  const std::string& tag) {
   std::vector<TruthRecoMatchRow> rows;
+  read_sf_match_tree(tree, max_events, tag, rows);
+  return rows;
+}
+
+// Reads truth-reco matches in same_frame.
+void read_sf_match_tree(TTree& tree, std::size_t max_events, const std::string& tag,
+                        std::vector<TruthRecoMatchRow>& rows) {
+  read_scalar_pair_match_rows(tree, max_events, tag, "truth_index",
+                              &TruthRecoMatchRow::truth_index, "reco_index",
+                              &TruthRecoMatchRow::reco_index, rows);
+}
+
+// Read best (Centauro, antikt) match in diff_frame.
+std::vector<CrossFrameBestMatchRow> read_cf_best_match_tree(TTree& tree,
+                                                            std::size_t max_events,
+                                                            const std::string& tag) {
+  std::vector<CrossFrameBestMatchRow> rows;
+  read_cf_best_match_tree(tree, max_events, tag, rows);
+  return rows;
+}
+
+void read_cf_best_match_tree(TTree& tree, std::size_t max_events,
+                             const std::string& tag,
+                             std::vector<CrossFrameBestMatchRow>& rows) {
+  read_scalar_pair_match_rows(tree, max_events, tag, "centauro_index",
+                              &CrossFrameBestMatchRow::centauro_index,
+                              "antikt_index",
+                              &CrossFrameBestMatchRow::antikt_index, rows);
+}
+
+std::vector<CrossFrameAllMatchRow> read_cf_all_match_tree(TTree& tree,
+                                                          std::size_t max_events,
+                                                          const std::string& tag) {
+  std::vector<CrossFrameAllMatchRow> rows;
+  read_cf_all_match_tree(tree, max_events, tag, rows);
+  return rows;
+}
+
+// Read (Centauro, all antikt within dR) "pair".
+void read_cf_all_match_tree(TTree& tree, std::size_t max_events,
+                            const std::string& tag,
+                            std::vector<CrossFrameAllMatchRow>& rows) {
+  require_branch(tree, "event", tag);
+  require_branch(tree, "centauro_index", tag);
+  require_branch(tree, "antikt_indices", tag);
+
+  ULong64_t event = 0;
+  int centauro_index = -1;
+  std::vector<int>* antikt_indices = nullptr;
+
+  tree.SetBranchAddress("event", &event);
+  tree.SetBranchAddress("centauro_index", &centauro_index);
+  tree.SetBranchAddress("antikt_indices", &antikt_indices);
+
+  rows.clear();
   const std::size_t entries = static_cast<std::size_t>(tree.GetEntries());
   rows.reserve(entries);
 
@@ -238,14 +321,21 @@ std::vector<TruthRecoMatchRow> read_match_tree(TTree& tree, std::size_t max_even
       progress.report(make_read_message(tag, tree.GetName(), i, entries));
     }
     tree.GetEntry(static_cast<Long64_t>(i));
-    if (!event_gate.allow(row.event)) {
+    if (!event_gate.allow(event)) {
       continue;
     }
-    rows.push_back(row);
+
+    CrossFrameAllMatchRow row;
+    row.event = event;
+    row.centauro_index = centauro_index;
+    row.antikt_indices.clear();
+    if (antikt_indices != nullptr) {
+      row.antikt_indices = *antikt_indices;
+    }
+    rows.push_back(std::move(row));
   }
 
   progress.finish(make_read_message(tag, tree.GetName(), entries, entries));
-  return rows;
 }
 
 void setup_truth_reco_match_tree(TTree& tree, TruthRecoMatchRow& row) {

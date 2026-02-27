@@ -60,7 +60,24 @@ void read_jet_tree(TTree& tree, std::size_t max_events, EventJets& events,
                    const JetTreeReadOptions& options = JetTreeReadOptions{});
 
 // Read same-frame match rows (event, truth_index, reco_index, dR).
-std::vector<TruthRecoMatchRow> read_match_tree(TTree& tree, std::size_t max_events, const std::string& tag);
+std::vector<TruthRecoMatchRow> read_sf_match_tree(TTree& tree, std::size_t max_events,
+                                                  const std::string& tag);
+// Read same-frame match rows into a caller-provided buffer.
+void read_sf_match_tree(TTree& tree, std::size_t max_events, const std::string& tag,
+                        std::vector<TruthRecoMatchRow>& rows);
+// Read diff-frame best-match rows (event, centauro_index, antikt_index, dR).
+std::vector<CrossFrameBestMatchRow> read_cf_best_match_tree(TTree& tree,
+                                                            std::size_t max_events,
+                                                            const std::string& tag);
+// Read diff-frame best-match rows into a caller-provided buffer.
+void read_cf_best_match_tree(TTree& tree, std::size_t max_events, const std::string& tag,
+                             std::vector<CrossFrameBestMatchRow>& rows);
+// Read diff-frame all-match rows (event, centauro_index, antikt_indices).
+std::vector<CrossFrameAllMatchRow> read_cf_all_match_tree(TTree& tree, std::size_t max_events,
+                                                          const std::string& tag);
+// Read diff-frame all-match rows into a caller-provided buffer.
+void read_cf_all_match_tree(TTree& tree, std::size_t max_events, const std::string& tag,
+                            std::vector<CrossFrameAllMatchRow>& rows);
 
 // Define same-frame match tree branches.
 void setup_truth_reco_match_tree(TTree& tree, TruthRecoMatchRow& row);

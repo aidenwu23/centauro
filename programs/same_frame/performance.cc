@@ -722,9 +722,9 @@ int main(int argc, char* argv[]) {
   jet_tools::read_jet_tree(*t_centauro_reco, args.max_events, centauro_reco, "performance");
 
   const std::vector<jet_tools::TruthRecoMatchRow> antikt_matches =
-      jet_tools::read_match_tree(*t_antikt_matches, args.max_events, "performance");
+      jet_tools::read_sf_match_tree(*t_antikt_matches, args.max_events, "performance");
   const std::vector<jet_tools::TruthRecoMatchRow> centauro_matches =
-      jet_tools::read_match_tree(*t_centauro_matches, args.max_events, "performance");
+      jet_tools::read_sf_match_tree(*t_centauro_matches, args.max_events, "performance");
 
   AlgData data[2];
   collect_alg_data("antikt", antikt_truth, antikt_reco, antikt_matches, args, data[0]);
